@@ -2,168 +2,331 @@
 include("includes/db.connection.php");
 session_start();
 
-// If cart is empty, redirect back
 if (empty($_SESSION['cart'])) {
     header("Location: cart.php");
     exit();
 }
+
+// Get selected item IDs from POST
+$selected_ids = isset($_POST['selected_items']) ? $_POST['selected_items'] : [];
+
+// Filter cart to selected items only
+$selected_cart = [];
+foreach ($_SESSION['cart'] as $item) {
+    if (in_array($item['id'], $selected_ids)) {
+        $selected_cart[] = $item;
+    }
+}
+
+if (empty($selected_cart)) {
+    // If none selected, redirect to cart
+    header("Location: cart.php");
+    exit();
+}
+
+// Calculate subtotal for selected items
+$total = 0;
+foreach ($selected_cart as $item) {
+    $price = floatval(str_replace(',', '', $item['price']));
+    $subtotal = $price * $item['quantity'];
+    $total += $subtotal;
+}
+
+// Default shipping fee
+$shipping_fee = 50;
+
+// Get voucher from GET
+$selected_voucher = isset($_GET['voucher']) ? $_GET['voucher'] : "";
+
+// Default discount
+$discount = 0;
+
+// Apply voucher logic
+switch ($selected_voucher) {
+    case "DISCOUNT50":
+        $discount = 50;
+        break;
+    case "DISCOUNT100":
+        $discount = 100;
+        break;
+    case "FREESHIP":
+        $shipping_fee = 0;
+        break;
+    case "FREESHIP50":
+        $shipping_fee = 0;
+        $discount = 50;
+        break;
+    case "FREESHIP100":
+        $shipping_fee = 0;
+        $discount = 100;
+        break;
+}
+
+// Compute grand total
+$grand_total = $total + $shipping_fee - $discount;
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Checkout</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, sans-serif;
-            background-color: #f8f9fa;
-            margin: 0;
-            padding: 0;
-        }
+  <meta charset="UTF-8" />
+  <title>Checkout</title>
+  <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    /* Your original styles preserved */
+    body {
+        background: linear-gradient(135deg, #f8f9fb, #e9edf3);
+        font-family: "Inter", "Segoe UI", sans-serif;
+        color: #333;
+        padding: 40px 15px;
+    }
 
+    .checkout-wrapper {
+        max-width: 700px;
+        margin: auto;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 8px 28px rgba(0,0,0,0.05);
+        padding: 35px;
+    }
+
+    .checkout-header {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+
+    .checkout-header h2 {
+        font-weight: 700;
+        color: #1e293b;
+        letter-spacing: -0.5px;
+    }
+
+    .btn-back {
+        display: inline-block;
+        margin-bottom: 20px;
+        font-size: 0.9rem;
+        color: #555;
+        text-decoration: none;
+        transition: color 0.2s;
+    }
+    .btn-back:hover {
+        color: #ff5722;
+    }
+
+    .order-summary {
+        background: #ffffff;
+        padding: 24px;
+        border-radius: 16px;
+        margin-bottom: 28px;
+        font-family: "Poppins", "Segoe UI", sans-serif;
+        font-size: 0.96rem;
+        line-height: 1.5;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+        border: 1px solid #f0f0f0;
+        color: #2c3e50;
+        transition: box-shadow 0.2s ease-in-out;
+    }
+
+    .order-summary:hover {
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    .order-summary h3 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 16px;
+        color: #1a1a1a;
+        border-bottom: 1px solid #f2f2f2;
+        padding-bottom: 8px;
+    }
+
+    .order-summary p {
+        margin: 6px 0;
+        display: flex;
+        justify-content: space-between;
+        font-weight: 400;
+        color: #4a4a4a;
+    }
+
+    .order-summary p strong {
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .order-summary .total-price {
+        margin-top: 18px;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #2c3e50;
+        letter-spacing: 0.3px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 10px;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .order-summary .total-price span:last-child {
+        color: #2c3e50;
+        font-size: 1.2rem;
+    }
+
+    label {
+        font-weight: 500;
+        margin-bottom: 6px;
+        display: block;
+    }
+
+    input.form-control, textarea.form-control, select.form-control {
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 0.95rem;
+        width: 100%;
+        border: 1px solid #ccc;
+        background: #fafafa;
+        transition: all 0.2s ease;
+        box-sizing: border-box;
+        resize: none;
+    }
+    input.form-control:focus, textarea.form-control:focus, select.form-control:focus {
+        outline: none;
+        border-color: #ff5722;
+        background: #fff;
+    }
+
+    .btn-checkout {
+        background: linear-gradient(135deg, #ff7a45, #ff5722);
+        border: none;
+        font-size: 1rem;
+        padding: 12px 0;
+        border-radius: 8px;
+        color: white;
+        font-weight: 600;
+        letter-spacing: 0.3px;
+        box-shadow: 0 4px 12px rgba(255, 87, 34, 0.2);
+        transition: all 0.2s ease-in-out;
+        cursor: pointer;
+        width: 100%;
+    }
+    .btn-checkout:hover {
+        background: linear-gradient(135deg, #ff5722, #ff7a45);
+    }
+
+    select.form-control {
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background-image: url("data:image/svg+xml;charset=US-ASCII,%3csvg%20width%3d%2210%22%20height%3d%227%22%20viewBox%3d%220%200%2010%207%22%20xmlns%3d%22http://www.w3.org/2000/svg%22%3e%3cpath%20d%3d%22M0%200l5%207%205-7z%22%20fill%3d%22%23333%22/%3e%3c/svg%3e");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        background-size: 10px 7px;
+        padding-right: 30px;
+        cursor: pointer;
+    }
+
+    @media (max-width: 600px) {
         .checkout-wrapper {
-            max-width: 900px;
-            margin: 40px auto;
-            background: #fff;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            padding: 25px 20px;
         }
-
-        h2 {
-            text-align: center;
-            color: #000000ff;
-            margin-bottom: 25px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 25px;
-        }
-
-        table, th, td {
-            border: 1px solid #e0e0e0;
-        }
-
-        th {
-            background: #5e5e5eff;
-            color: white;
-            padding: 12px;
-            text-align: left;
-        }
-
-        td {
-            padding: 12px;
-            color: #333;
-        }
-
-        th:last-child, td:last-child {
-            text-align: right;
-        }
-
-        input, textarea, select {
-            width: 100%;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            margin-top: 5px;
-            margin-bottom: 15px;
-            font-size: 14px;
-            background: #fafafa;
-            transition: all 0.2s ease-in-out;
-        }
-
-        input:focus, textarea:focus, select:focus {
-            outline: none;
-            border-color: #f26522;
-            background: #fff;
-        }
-
-        label {
-            font-weight: bold;
-            color: #555;
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        .btn {
-            background: #f26522;
-            color: white;
-            padding: 12px 20px;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 16px;
-            border-radius: 6px;
-            width: 100%;
-            transition: background 0.3s ease-in-out;
-        }
-
-        .btn:hover {
-            background: #d35400;
-        }
-
-        .total-row th {
-            font-size: 1.1em;
-        }
-    </style>
+    }
+  </style>
 </head>
 <body>
 
 <div class="checkout-wrapper">
+
+  <div class="checkout-header">
     <h2>Checkout</h2>
+  </div>
 
-    <!-- Cart Summary -->
-    <table>
-        <tr>
-            <th>Product</th>
-            <th>Price</th>
-            <th>Qty</th>
-            <th>Subtotal</th>
-        </tr>
-        <?php 
-        $total = 0;
-        foreach ($_SESSION['cart'] as $item): 
-            $price = floatval(str_replace(',', '', $item['price']));
-            $subtotal = $price * $item['quantity'];
-            $total += $subtotal;
-        ?>
-        <tr>
-            <td><?= htmlspecialchars($item['name']) ?></td>
-            <td>₱<?= number_format($price, 2) ?></td>
-            <td><?= $item['quantity'] ?></td>
-            <td>₱<?= number_format($subtotal, 2) ?></td>
-        </tr>
-        <?php endforeach; ?>
-        <tr class="total-row">
-            <th colspan="3" style="text-align: right;">Total</th>
-            <th>₱<?= number_format($total, 2) ?></th>
-        </tr>
-    </table>
+  <a href="cart.php" class="btn btn-outline-dark mb-3">⬅ Back to Shop</a>
 
-    <!-- Checkout Form -->
-    <form action="place_order.php" method="POST">
-        <label>Full Name:</label>
-        <input type="text" name="fullname" placeholder="Enter your full name" required>
+  <div class="order-summary">
+    <h3>Order Summary</h3>
+    <?php foreach ($selected_cart as $item): 
+      $price = floatval(str_replace(',', '', $item['price']));
+      $subtotal = $price * $item['quantity'];
+    ?>
+      <p>
+        <span><?= htmlspecialchars($item['name']) ?> × <?= $item['quantity'] ?></span>
+        <strong>₱<?= number_format($subtotal, 2) ?></strong>
+      </p>
+    <?php endforeach; ?>
 
-        <label>Address:</label>
-        <textarea name="address" rows="3" placeholder="Enter your delivery address" required></textarea>
+    <p><span>Subtotal</span> <strong>₱<?= number_format($total, 2) ?></strong></p>
+    <p><span>Shipping Fee</span> <strong>₱<?= number_format($shipping_fee, 2) ?></strong></p>
+    <p><span>Discount</span> <strong>-₱<?= number_format($discount, 2) ?></strong></p>
 
-        <label>Payment Method:</label>
-        <select name="payment_method" required>
-            <option value="">-- Select Payment Method --</option>
-            <option value="COD">Cash on Delivery</option>
-            <option value="Bank Transfer">Bank Transfer</option>
-            <option value="GCash">GCash</option>
-        </select>
+    <div class="total-price">
+      <span>Total</span>
+      <span>₱<?= number_format($grand_total, 2) ?></span>
+    </div>
+  </div>
 
-        
+  <!-- Voucher Selection -->
+  <form method="GET" style="margin-bottom: 20px;">
+    <label for="voucher">Voucher Code:</label>
+    <select name="voucher" id="voucher" class="form-control" onchange="this.form.submit()">
+      <option value="">-- Select Voucher --</option>
+      <optgroup label="Regular Discounts">
+        <option value="DISCOUNT50" <?= $selected_voucher==="DISCOUNT50" ? "selected" : "" ?>>₱50 Off</option>
+        <option value="DISCOUNT100" <?= $selected_voucher==="DISCOUNT100" ? "selected" : "" ?>>₱100 Off</option>
+        <option value="FREESHIP" <?= $selected_voucher==="FREESHIP" ? "selected" : "" ?>>Free Shipping Only</option>
+      </optgroup>
+      <optgroup label="Free Shipping + Discount">
+        <option value="FREESHIP50" <?= $selected_voucher==="FREESHIP50" ? "selected" : "" ?>>Free Shipping + ₱50 Off</option>
+        <option value="FREESHIP100" <?= $selected_voucher==="FREESHIP100" ? "selected" : "" ?>>Free Shipping + ₱100 Off</option>
+      </optgroup>
+    </select>
+    <noscript><button type="submit" class="btn-checkout" style="margin-top: 10px;">Apply</button></noscript>
+  </form>
 
-        <button type="submit" class="btn">Place Order</button>
-    </form>
+  <form id="checkoutForm" method="POST" action="place_order.php">
+    <label for="fullname">Full Name:</label>
+    <input id="fullname" type="text" name="fullname" required placeholder="Full name" class="form-control" />
+
+    <label for="address">Address:</label>
+    <textarea id="address" name="address" rows="3" required placeholder="Delivery address" class="form-control"></textarea>
+
+    <label for="paymentMethod">Payment Method:</label>
+    <select name="payment_method" id="paymentMethod" required class="form-control">
+      <option value="">-- Select Payment Method --</option>
+      <option value="COD">Cash on Delivery</option>
+      <option value="GCash">GCash</option>
+    </select>
+<input type="hidden" name="voucher" value="<?= htmlspecialchars($selected_voucher) ?>" />
+
+    <!-- Hidden inputs to pass totals -->
+    <input type="hidden" name="shipping_fee" value="<?= $shipping_fee ?>" />
+    <input type="hidden" name="discount" value="<?= $discount ?>" />
+    <input type="hidden" name="grand_total" value="<?= number_format($grand_total, 2, '.', '') ?>" />
+    <input type="hidden" name="total_amount" value="<?= number_format($total, 2, '.', '') ?>" />
+
+    <!-- Also pass selected item ids for order processing -->
+    <?php foreach ($selected_ids as $id): ?>
+        <input type="hidden" name="selected_items[]" value="<?= htmlspecialchars($id) ?>" />
+    <?php endforeach; ?>
+
+    <br />
+
+    <button type="submit" class="btn-checkout">Place Order</button>
+  </form>
 </div>
+
+<script>
+  const form = document.getElementById("checkoutForm");
+  const paymentMethod = document.getElementById("paymentMethod");
+
+  form.addEventListener("submit", function(event) {
+    const method = paymentMethod.value;
+    if (method === "GCash") {
+      form.action = "gcash1.php";
+    } else {
+      form.action = "place_order.php";
+    }
+  });
+</script>
 
 </body>
 </html>
